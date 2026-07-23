@@ -34,7 +34,7 @@ MainWindow::MainWindow(QWidget *parent)
                 if (!armState)return;
 
                 lastThrottleSent = throttleValue;
-                sendCommand(QString("throttle %1").arg(throttleValue));
+                sendCommand(Command::Throttle, static_cast<uint8_t>(throttleValue));
             });
 
     connect(discoveryAgent, &QBluetoothDeviceDiscoveryAgent::deviceDiscovered,
@@ -84,7 +84,7 @@ void MainWindow::on_armButton_clicked()
     {
         ui->armButton->setText("ARM");
         armState = false;
-        sendCommand("disarm");
+        sendCommand(Command::Disarm);
         throttleTimer->stop();
         throttleValue = 0;
         ui->verticalSlider->setValue(0);
@@ -95,7 +95,7 @@ void MainWindow::on_armButton_clicked()
     {
         ui->armButton->setText("DISARM");
         armState = true;
-        sendCommand("arm");
+        sendCommand(Command::Arm);
         throttleTimer->start();
         ui->verticalSlider->setEnabled(true);
 
@@ -106,7 +106,7 @@ void MainWindow::on_armButton_clicked()
 
 void MainWindow::on_stopButton_clicked()
 {
-    sendCommand("stop");
+    sendCommand(Command::Stop);
 
     throttleValue = 0;
     ui->verticalSlider->setValue(0);
@@ -212,23 +212,24 @@ void MainWindow::discoveryFinished()
     }
 }
 
-void MainWindow::sendCommand(const QString &cmd)
+void MainWindow::sendCommand(Command command, uint8_t value)
 {
-    if (btSocket->state() != QBluetoothSocket::SocketState::ConnectedState)
+    if (!btSocket || !btSocket->isOpen())
     {
-        qDebug() << "Bluetooth not connected";
         return;
     }
 
-    QByteArray data = cmd.toUtf8();
-    data.append('\n');
+    const uint8_t commandByte = static_cast<uint8_t>(command);
 
-    btSocket->write(data);
+    QByteArray packet;
+    packet.reserve(4);
+    packet.append(char(0xAA));
+    packet.append(char(commandByte));
+    packet.append(char(value));
+    packet.append(char(0xAA ^ commandByte ^ value));
 
-    qDebug() << "TX:" << cmd;
+    btSocket->write(packet);
 }
-
-
 
 void MainWindow::on_verticalSlider_valueChanged(int value)
 {
@@ -236,42 +237,6 @@ void MainWindow::on_verticalSlider_valueChanged(int value)
     ui->throttleLabel->setText(QString("%1 %").arg(value));
 }
 
-// void MainWindow::on_comboBoxProtocol_currentIndexChanged(int index)
-// {
-//     if (!btSocket)
-//         return;
-
-//     if (btSocket->state() != QBluetoothSocket::SocketState::ConnectedState)
-//         return;
-
-//     QString command;
-
-//     switch(index)
-//     {
-//     case 0:
-//         command = "protocol pwm\n";
-//         break;
-
-//     case 1:
-//         command = "protocol dshot300\n";
-//         break;
-
-//     case 2:
-//         command = "protocol dshot600\n";
-//         break;
-
-//     case 3:
-//         command = "protocol bdshot\n";
-//         break;
-
-//     default:
-//         return;
-//     }
-
-//     btSocket->write(command.toUtf8());
-
-//     qDebug() << "TX:" << command;
-// }
 
 void MainWindow::on_comboBox_activated(int index)
 {

@@ -12,6 +12,15 @@
 #include <QBluetoothDeviceInfo>
 
 #include <QTimer>
+#include <cstdint>
+
+enum class Command : uint8_t {
+    Arm       = 0x01,
+    Disarm    = 0x02,
+    Stop      = 0x03,
+    Throttle  = 0x04,
+    Protocol  = 0x05
+};
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -29,24 +38,15 @@ public:
 private slots:
 
     void connectToESP32();
-
     void bluetoothConnected();
-
     void bluetoothDisconnected();
-
     void bluetoothErrorOccurred(QBluetoothSocket::SocketError error);
-
     void bluetoothReadyRead();
-
     void on_armButton_clicked();
-
     void on_stopButton_clicked();
-
     void on_connectButton_clicked();
-
     void deviceDiscovered(const QBluetoothDeviceInfo &device);
     void discoveryFinished();
-
     void on_comboBox_activated(int index);
 
 private:
@@ -64,7 +64,7 @@ private:
     int throttleValue = 0;
     int lastThrottleSent = -1;
 
-    void sendCommand(const QString &cmd);
+    void sendCommand(Command command, uint8_t value = 0);
     void on_verticalSlider_valueChanged(int value);
 
     void on_comboBoxProtocol_currentIndexChanged(int index);
