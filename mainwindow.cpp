@@ -7,16 +7,13 @@
 #include <QPermissions>
 #include <QBluetoothPermission>
 
-
-#define ESP32_BT_ADDRESS "EC:62:60:9C:B9:2E"
-
+// #define ESP32_BT_ADDRESS "EC:62:60:9C:B9:2E"
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
-
 
     connect(ui->verticalSlider, &QSlider::valueChanged,
             this, &MainWindow::on_verticalSlider_valueChanged);
@@ -87,7 +84,6 @@ void MainWindow::on_armButton_clicked()
         sendCommand(Command::Disarm);
         throttleTimer->stop();
         throttleValue = 0;
-        ui->verticalSlider->setValue(0);
         ui->verticalSlider->setValue(0);
         ui->verticalSlider->setEnabled(false);
     }
@@ -173,15 +169,35 @@ void MainWindow::bluetoothErrorOccurred(QBluetoothSocket::SocketError error)
 void MainWindow::bluetoothReadyRead()
 {
     QByteArray data = btSocket->readAll();
+
+    if (data.size() < 4)
+        return;
+
     qDebug() << "RX:" << data;
 
-    if (data.startsWith("PROTOCOL "))
-    {
-        int index = data.mid(9).trimmed().toInt();
+    const uint8_t *packet = reinterpret_cast<const uint8_t *>(data.constData());
 
-        ui->comboBox->blockSignals(true);
-        ui->comboBox->setCurrentIndex(index);
-        ui->comboBox->blockSignals(false);
+    // Перевірка початку пакета
+    if (packet[0] != 0xAA)
+        return;
+
+    // Перевірка CRC
+    uint8_t crc = packet[0] ^ packet[1] ^ packet[2];
+    if (crc != packet[3])
+        return;
+
+    if (data.size() >= 4)
+    {
+        const uint8_t *packet = reinterpret_cast<const uint8_t *>(data.constData());
+
+        if (packet[0] == 0xAA && packet[1] == CMD_PROTOCOL)
+        {
+            uint8_t protocol = packet[2];
+
+            ui->comboBox->blockSignals(true);
+            ui->comboBox->setCurrentIndex(protocol);
+            ui->comboBox->blockSignals(false);
+        }
     }
 }
 
@@ -214,21 +230,28 @@ void MainWindow::discoveryFinished()
 
 void MainWindow::sendCommand(Command command, uint8_t value)
 {
-    if (!btSocket || !btSocket->isOpen())
-    {
-        return;
-    }
+    qDebug() << "sendCommand() CALLED";
+    // if (!btSocket || btSocket->state() != QBluetoothSocket::ConnectedState)
+    // {
+    //     qDebug() << "Bluetooth socket is not connected";
+    //     return;
+    // }
 
-    const uint8_t commandByte = static_cast<uint8_t>(command);
+    const uint8_t cmd = static_cast<uint8_t>(command);
+    const uint8_t crc = 0xAA ^ cmd ^ value;
 
     QByteArray packet;
     packet.reserve(4);
-    packet.append(char(0xAA));
-    packet.append(char(commandByte));
-    packet.append(char(value));
-    packet.append(char(0xAA ^ commandByte ^ value));
+    packet.append(static_cast<char>(0xAA));
+    packet.append(static_cast<char>(cmd));
+    packet.append(static_cast<char>(value));
+    packet.append(static_cast<char>(crc));
 
-    btSocket->write(packet);
+    qDebug() << "TX:" << packet.toHex(' ').toUpper();
+
+    const qint64 written = btSocket->write(packet);
+    if (written != packet.size())
+        qDebug() << "Only" << written << "of" << packet.size() << "bytes queued";
 }
 
 void MainWindow::on_verticalSlider_valueChanged(int value)
@@ -246,32 +269,30 @@ void MainWindow::on_comboBox_activated(int index)
     if (btSocket->state() != QBluetoothSocket::SocketState::ConnectedState)
         return;
 
-    QString command;
+    uint8_t protocol;
 
     switch(index)
     {
     case 0:
-        command = "protocol pwm\n";
+        protocol = PWM;
         break;
 
     case 1:
-        command = "protocol dshot300\n";
+        protocol = DSHOT300;
         break;
 
     case 2:
-        command = "protocol dshot600\n";
+        protocol = DSHOT600;
         break;
 
     case 3:
-        command = "protocol bdshot\n";
+        protocol = BIDIRECTIONAL_DSHOT;
         break;
 
     default:
         return;
     }
 
-    btSocket->write(command.toUtf8());
-
-    qDebug() << "TX:" << command;
+    sendCommand(Command::Protocol, protocol);
 }
 

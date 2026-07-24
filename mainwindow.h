@@ -14,6 +14,14 @@
 #include <QTimer>
 #include <cstdint>
 
+// ********** For protocol **********//
+#define PWM                     0x00
+#define DSHOT300                0x01
+#define DSHOT600                0x02
+#define BIDIRECTIONAL_DSHOT     0x03
+#define CMD_PROTOCOL            0x05
+
+
 enum class Command : uint8_t {
     Arm       = 0x01,
     Disarm    = 0x02,
@@ -21,6 +29,7 @@ enum class Command : uint8_t {
     Throttle  = 0x04,
     Protocol  = 0x05
 };
+
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -67,6 +76,5 @@ private:
     void sendCommand(Command command, uint8_t value = 0);
     void on_verticalSlider_valueChanged(int value);
 
-    void on_comboBoxProtocol_currentIndexChanged(int index);
 };
 #endif // MAINWINDOW_H
