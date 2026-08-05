@@ -20,6 +20,7 @@
 #define DSHOT600                0x02
 #define BIDIRECTIONAL_DSHOT     0x03
 #define CMD_PROTOCOL            0x05
+#define CMD_TELEMETRY           0x10
 
 
 enum class Command : uint8_t {
@@ -75,6 +76,8 @@ private:
 
     void sendCommand(Command command, uint8_t value = 0);
     void on_verticalSlider_valueChanged(int value);
+
+    QByteArray rxBuffer;
 
 };
 #endif // MAINWINDOW_H

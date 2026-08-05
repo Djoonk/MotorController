@@ -168,35 +168,91 @@ void MainWindow::bluetoothErrorOccurred(QBluetoothSocket::SocketError error)
 
 void MainWindow::bluetoothReadyRead()
 {
-    QByteArray data = btSocket->readAll();
+    rxBuffer.append(btSocket->readAll());
 
-    if (data.size() < 4)
-        return;
-
-    qDebug() << "RX:" << data;
-
-    const uint8_t *packet = reinterpret_cast<const uint8_t *>(data.constData());
-
-    // Перевірка початку пакета
-    if (packet[0] != 0xAA)
-        return;
-
-    // Перевірка CRC
-    uint8_t crc = packet[0] ^ packet[1] ^ packet[2];
-    if (crc != packet[3])
-        return;
-
-    if (data.size() >= 4)
+    // Process all complete packets in the buffer
+    while (rxBuffer.size() >= 4)
     {
-        const uint8_t *packet = reinterpret_cast<const uint8_t *>(data.constData());
+        // Find SOF (0xAA)
+        int sof = rxBuffer.indexOf(static_cast<char>(0xAA));
+        if (sof < 0) {
+            rxBuffer.clear();
+            return;
+        }
+        if (sof > 0)
+            rxBuffer.remove(0, sof); // discard bytes before SOF
 
-        if (packet[0] == 0xAA && packet[1] == CMD_PROTOCOL)
+        // Check if we have enough bytes for the packet type
+        const uint8_t *raw = reinterpret_cast<const uint8_t *>(rxBuffer.constData());
+        uint8_t cmd = raw[1];
+
+        if (cmd == CMD_TELEMETRY)
         {
-            uint8_t protocol = packet[2];
+            // Telemetry packet: 8 bytes
+            if (rxBuffer.size() < 8)
+                return; // wait for more data
 
-            ui->comboBox->blockSignals(true);
-            ui->comboBox->setCurrentIndex(protocol);
-            ui->comboBox->blockSignals(false);
+            // CRC check: XOR of bytes 0..6
+            uint8_t crc = 0;
+            for (int i = 0; i < 7; i++)
+                crc ^= raw[i];
+
+            if (crc != raw[7]) {
+                rxBuffer.remove(0, 1);
+                continue;
+            }
+
+            // Decode eRPM (12-bit raw value, phone converts to eRPM)
+            uint16_t erpm_raw = static_cast<uint16_t>(raw[2] | (raw[3] << 8));
+            double rpm = 0;
+            if (erpm_raw != 0 && erpm_raw != 0x0FFF)
+            {
+                uint32_t period = (erpm_raw & 0x01FF) << ((erpm_raw & 0xFE00) >> 9);
+                if (period > 0)
+                    rpm = (600000.0 + period / 2.0) / period; // eRPM
+            }
+
+            // Temperature: 1 LSB = 1 °C
+            uint8_t temp_raw = raw[4];
+
+            // Voltage: 1 LSB = 0.25 V
+            uint8_t voltage_raw = raw[5];
+            double voltage = voltage_raw * 0.25;
+
+            // Current: 1 LSB = 0.5 A
+            uint8_t current_raw = raw[6];
+            double current = current_raw * 0.5;
+
+            // Update labels
+            ui->l_rpm->setText(QString::number(static_cast<int>(rpm)));
+            ui->l_voltage->setText(QString::number(voltage, 'f', 2) + " V");
+            ui->l_current->setText(QString::number(current, 'f', 1) + " A");
+            ui->l_temp->setText(QString::number(temp_raw) + " °C");
+
+            rxBuffer.remove(0, 8);
+        }
+        else
+        {
+            // Command packet: 4 bytes
+            if (rxBuffer.size() < 4)
+                return;
+
+            // CRC check
+            uint8_t crc = raw[0] ^ raw[1] ^ raw[2];
+            if (crc != raw[3]) {
+                rxBuffer.remove(0, 1);
+                continue;
+            }
+
+            if (cmd == CMD_PROTOCOL)
+            {
+                uint8_t protocol = raw[2];
+                ui->comboBox->blockSignals(true);
+                ui->comboBox->setCurrentIndex(protocol);
+                ui->comboBox->blockSignals(false);
+            }
+
+            rxBuffer.remove(0, 4);
         }
     }
 }
