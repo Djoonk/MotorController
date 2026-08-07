@@ -86,6 +86,8 @@ void MainWindow::on_armButton_clicked()
         throttleValue = 0;
         ui->verticalSlider->setValue(0);
         ui->verticalSlider->setEnabled(false);
+        ui->motorStatus->setText("DISARMED");
+        ui->motorStatus->setStyleSheet("color: #4ac42e; font-size: 16pt; font-weight: bold;");
     }
     else
     {
@@ -94,7 +96,8 @@ void MainWindow::on_armButton_clicked()
         sendCommand(Command::Arm);
         throttleTimer->start();
         ui->verticalSlider->setEnabled(true);
-
+        ui->motorStatus->setText("ARMED");
+        ui->motorStatus->setStyleSheet("color: #cc020c;; font-size: 16pt; font-weight: bold;");
         lastThrottleSent = -1;
     }
 }
@@ -217,11 +220,12 @@ void MainWindow::bluetoothReadyRead()
 
             // Voltage: 1 LSB = 0.25 V
             uint8_t voltage_raw = raw[5];
-            double voltage = voltage_raw * 0.25;
+            // double voltage = voltage_raw * 0.25;
+            double voltage = voltage_raw;
 
             // Current: 1 LSB = 0.5 A
             uint8_t current_raw = raw[6];
-            double current = current_raw * 0.5;
+            double current = current_raw;
 
             // Update labels
             ui->l_rpm->setText(QString::number(static_cast<int>(rpm)));
